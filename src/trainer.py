@@ -128,7 +128,7 @@ if __name__ == '__main__':
             # Forward pass
             try:
                 outputs = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], labels=batch['input_ids'])
-                loss = outputs.loss.mean()
+                loss = outputs.total_loss
 
                 # Backward pass
                 optimizer.zero_grad()
