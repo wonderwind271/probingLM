@@ -108,9 +108,9 @@ if __name__ == '__main__':
     scheduler = get_scheduler(
         'linear', optimizer=optimizer, num_warmup_steps=1000, num_training_steps=4*len(dataset)
     )
-    
+    global_block_no = 0
     for epoch in range(effective_epochs):
-
+        epoch_step = 0
         epoch_loss = 0
         progress_bar = tqdm(dataloader, desc=f'Epoch {epoch + 1}/{effective_epochs}')
 
