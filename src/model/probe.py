@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 from transformers import GPT2LMHeadModel
 
 class NaturalProbingGPT2(nn.Module):
@@ -8,6 +9,7 @@ class NaturalProbingGPT2(nn.Module):
         self.num_layers = num_layers
         self.vocab_size = len(tokenizer)
         self.d_model = base_model.config.hidden_size
+        self.device = base_model.device if hasattr(base_model, "device") else torch.device("cpu")
 
         # Independent unembedding heads for layer 0 to layer 10 (i=1 to 11)
         self.probes = nn.ModuleList([
@@ -36,3 +38,19 @@ class NaturalProbingGPT2(nn.Module):
 
         total_loss = loss_main + total_probe_loss
         return total_loss, loss_main, total_probe_loss
+    
+    def save_base_model(self, dir_path: str):
+        """Save HuggingFace base model"""
+        self.base_model.save_pretrained(dir_path)
+
+    def load_base_model(self, dir_path: str):
+        """Static method to load only base model"""
+        self.base_model = GPT2LMHeadModel.from_pretrained(dir_path)
+
+    def save_probing(self, path: str):
+        """Save probing head weights (W_i) only"""
+        torch.save(self.probes.state_dict(), path)
+
+    def load_probing(self, path: str):
+        """Load probing head weights"""
+        self.probes.load_state_dict(torch.load(path, map_location=self.device))
