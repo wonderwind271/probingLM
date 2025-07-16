@@ -17,7 +17,7 @@ class ProbingOutput():
 
 
 class BaseProbingGPT2(nn.Module, ABC):
-    def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12):
+    def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12, has_bias=True):
         super().__init__()
         self.base_model = base_model
         self.num_layers = num_layers
@@ -26,7 +26,7 @@ class BaseProbingGPT2(nn.Module, ABC):
         self.device = base_model.device if hasattr(base_model, "device") else torch.device("cpu")
 
         self.probes = nn.ModuleList([
-            nn.Linear(self.d_model, self.vocab_size, bias=False)
+            nn.Linear(self.d_model, self.vocab_size, bias=has_bias)
             for _ in range(self.num_layers - 1)
         ])
         self.loss_fn = nn.CrossEntropyLoss()
@@ -79,8 +79,8 @@ class NaturalProbingGPT2(BaseProbingGPT2):
 
 
 class LensProbingGPT2(BaseProbingGPT2):
-    def __init__(self, base_model, tokenizer, num_layers=12, loss_type="kl"):
-        super().__init__(base_model, tokenizer, num_layers)
+    def __init__(self, base_model, tokenizer, num_layers=12, has_bias=True, loss_type="kl"):
+        super().__init__(base_model, tokenizer, num_layers, has_bias)
         assert loss_type in ("ce", "kl")
         self.loss_type = loss_type
 
