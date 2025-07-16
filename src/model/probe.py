@@ -54,3 +54,7 @@ class NaturalProbingGPT2(nn.Module):
     def load_probing(self, path: str):
         """Load probing head weights"""
         self.probes.load_state_dict(torch.load(path, map_location=self.device))
+
+
+class LensProbingGPT2(nn.Module):
+    pass
