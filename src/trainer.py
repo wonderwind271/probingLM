@@ -19,6 +19,13 @@ from tokenizer.wordlevel_tokenizer import TrainableWordTokenizer
 
 seed = 42
 tokenizer = TrainableWordTokenizer(vocab_file='tokenizer/vocab.json')
+BATCH_SIZE = 16
+
+
+def step_num(epoches: int, dataset: Dataset):
+    """Determine step size with dataset."""
+    return math.ceil(len(dataset) / BATCH_SIZE) * epoches
+
 
 def split_text_into_chunks(text, chunk_size=512):
     """Split a string into chunks of at most `chunk_size` words."""
@@ -99,14 +106,14 @@ effective_epochs = 4
 if __name__ == '__main__':
     model = checkpoint_path_to_model(files_sorted[-1])
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    probe_model = LensProbingGPT2(model, tokenizer)
-    dataset = load_dataset('wonderwind271/childes-pretrain')
+    probe_model = LensProbingGPT2(model, tokenizer).to(device)
+    dataset = load_dataset('wonderwind271/childes-pretrain')['train']
     tokenized_dataset = dataset.map(lambda x: tokenize_function(x, tokenizer), batched=True)
     tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
-    dataloader = prepare_dataloader(tokenized_dataset, 16)
-    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
+    dataloader = prepare_dataloader(tokenized_dataset, BATCH_SIZE)
+    optimizer = AdamW(probe_model.parameters(), lr=LEARNING_RATE)
     scheduler = get_scheduler(
-        'linear', optimizer=optimizer, num_warmup_steps=1000, num_training_steps=4*len(dataset)
+        'linear', optimizer=optimizer, num_warmup_steps=1000, num_training_steps=step_num(effective_epochs, dataset)
     )
     global_block_no = 0
     for epoch in range(effective_epochs):
@@ -127,20 +134,20 @@ if __name__ == '__main__':
 
             # Forward pass
             try:
-                outputs = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], labels=batch['input_ids'])
+                outputs = probe_model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], labels=batch['input_ids'])
                 loss = outputs.total_loss
 
                 # Backward pass
                 optimizer.zero_grad()
                 loss.backward()
                 total_norm = 0.0
-                for p in model.parameters():
+                for p in probe_model.parameters():
                     if p.grad is not None:
                         param_norm = p.grad.data.norm(2)  # L2 norm
                         total_norm += param_norm.item() ** 2
 
                 total_norm = total_norm ** 0.5  # L2 norm of all gradients combined
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(probe_model.parameters(), max_norm=1.0)
 
                 optimizer.step()
                 scheduler.step()
