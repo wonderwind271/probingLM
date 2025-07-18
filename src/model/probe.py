@@ -28,7 +28,7 @@ class BaseProbingGPT2(nn.Module, ABC):
             base_model, "device") else torch.device("cpu")
 
         self.probes = nn.ModuleList([
-            nn.Linear(self.d_model, self.vocab_size, bias=has_bias)
+            nn.Linear(self.d_model, self.d_model, bias=has_bias)
             for _ in range(self.num_layers - 1)
         ])
         self.loss_fn = nn.CrossEntropyLoss()
