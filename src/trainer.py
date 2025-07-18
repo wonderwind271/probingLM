@@ -82,6 +82,17 @@ def checkpoint_path_to_model(path):
     model.load_state_dict(checkpoint['model_state_dict'])
     return model
 
+def probe_checkpoint_path_to_model(path, probing_layers):
+    """Load probe checkpoint to model."""
+    checkpoint = torch.load(path)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = GPT2LMHeadModel(config=GPT2Config()).to(device)
+    model.resize_token_embeddings(len(tokenizer))
+    model.eval()
+    probe_model = LensProbingGPT2(model, tokenizer, probing_layers=probing_layers).to(device)
+    probe_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+    return probe_model
+
 
 def tokenize_function(example, tokenizer):
     """Tokenize the dataset examples."""
