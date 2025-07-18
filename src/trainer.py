@@ -125,7 +125,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = checkpoint_path_to_model(files_sorted[-1]).to(device)
     model.eval()
-    probe_model = LensProbingGPT2(model, tokenizer).to(device)
+    probe_model = LensProbingGPT2(model, tokenizer, probing_layers=[6,7,8,9,10]).to(device)
     dataset = load_dataset('wonderwind271/childes-pretrain')['train']
     tokenized_dataset = dataset.map(lambda x: tokenize_function(x, tokenizer), batched=True)
     tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
