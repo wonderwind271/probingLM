@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 from transformers import GPT2LMHeadModel
+import copy
 
 
 class ProbingOutput():
@@ -24,7 +25,8 @@ class BaseProbingGPT2(nn.Module, ABC):
         self.probing_layers = probing_layers
         self.vocab_size = len(tokenizer)
         self.d_model = base_model.config.hidden_size
-        self.device = base_model.device if hasattr(base_model, "device") else torch.device("cpu")
+        self.device = base_model.device if hasattr(
+            base_model, "device") else torch.device("cpu")
 
         self.probes = nn.ModuleList([
             self._create_probe(has_bias)
@@ -53,8 +55,9 @@ class BaseProbingGPT2(nn.Module, ABC):
 
 class NaturalProbingGPT2(BaseProbingGPT2):
     """Main LLM + probing loss (natural probing, train both)"""
+    
     def _create_probe(self, has_bias: bool):
-        return nn.Linear(self.d_model, self.vocab_size, bias=has_bias)
+        return nn.Linear(self.d_model, self.d_model, bias=has_bias)
     
     def forward(self, input_ids, attention_mask=None, labels=None):
         input_ids = input_ids.to(self.device)
@@ -73,12 +76,15 @@ class NaturalProbingGPT2(BaseProbingGPT2):
 
         total_probe_loss = 0.0
         all_probe_logits = []
-        for idx, layer in enumerate(self.probing_layers):
-            h = hidden_states[layer + 1].detach()
-            logits = self.probes[idx](h)
+        
+        for i in range(self.num_layers - 1):
+            h = hidden_states[i + 1].detach()
+            logits = self.base_model.lm_head(
+                self.base_model.transformer.ln_f(self.probes[i](h)))  # TODO: checking
             all_probe_logits.append(logits)
             if labels is not None:
-                loss_i = self.loss_fn(logits.view(-1, logits.size(-1)), labels.view(-1))
+                loss_i = self.loss_fn(
+                    logits.view(-1, logits.size(-1)), labels.view(-1))
                 total_probe_loss += loss_i
 
         total_loss = loss_main + total_probe_loss
@@ -101,6 +107,7 @@ class LensProbingGPT2(BaseProbingGPT2):
         # Freeze base model
         for param in self.base_model.parameters():
             param.requires_grad = False
+        self.base_model.eval()
 
     def forward(self, input_ids, attention_mask=None, labels=None):
         input_ids = input_ids.to(self.device)
@@ -122,20 +129,19 @@ class LensProbingGPT2(BaseProbingGPT2):
         all_probe_logits = []
         if self.loss_type == "kl":
             final_probs = F.softmax(final_logits, dim=-1)  # once
-        
-        
-        for idx, layer in enumerate(self.probing_layers):
-            h = hidden_states[layer + 1].detach()
-            probe_projected = self.probes[idx](h)
-            probe_projected_normalized = self.layer_norms[idx](probe_projected)
             
-            probe_logits = self.base_model.lm_head(probe_projected_normalized)  # self.base_model.lm_head is frozen
+        for i in range(self.num_layers - 1):  # layers 1 to 11
+            h = hidden_states[i + 1]  # [B, S, D]
+            probe_logits = self.base_model.lm_head(
+                self.base_model.transformer.ln_f(self.probes[i](h)))
+        
             all_probe_logits.append(probe_logits)
 
             if labels is not None:
                 if self.loss_type == "ce":
                     # Cross-entropy with next token labels
-                    loss_i = self.loss_fn(probe_logits.view(-1, probe_logits.size(-1)), labels.view(-1))
+                    loss_i = self.loss_fn(
+                        probe_logits.view(-1, probe_logits.size(-1)), labels.view(-1))
 
                 elif self.loss_type == "kl":
                     # KL divergence to final logits
@@ -149,3 +155,8 @@ class LensProbingGPT2(BaseProbingGPT2):
         # return total_probe_loss, None, total_probe_loss, all_probe_logits
         return ProbingOutput({'total_loss': total_probe_loss, 'total_probe_loss': total_probe_loss, 'all_probe_logits': all_probe_logits})
 
+
+if __name__ == "__main__":
+    model = GPT2LMHeadModel.from_pretrained("gpt2")
+    from IPython import embed
+    embed()
