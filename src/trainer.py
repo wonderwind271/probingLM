@@ -105,6 +105,7 @@ effective_epochs = 4
 
 if __name__ == '__main__':
     model = checkpoint_path_to_model(files_sorted[-1])
+    model.eval()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     probe_model = LensProbingGPT2(model, tokenizer).to(device)
     dataset = load_dataset('wonderwind271/childes-pretrain')['train']
