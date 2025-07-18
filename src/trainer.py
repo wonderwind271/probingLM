@@ -20,7 +20,7 @@ from tokenizer.wordlevel_tokenizer import TrainableWordTokenizer
 seed = 42
 tokenizer = TrainableWordTokenizer(vocab_file='tokenizer/vocab.json')
 BATCH_SIZE = 16
-PROBE_CHECKPOINT_DIR = '/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s42_shuffled/'
+PROBE_CHECKPOINT_DIR = '/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s42_shuffled_tunedlens/'
 
 
 def step_num(epoches: int, dataset: Dataset):

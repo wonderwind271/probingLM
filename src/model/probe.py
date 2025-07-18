@@ -17,17 +17,18 @@ class ProbingOutput():
 
 
 class BaseProbingGPT2(nn.Module, ABC):
-    def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12, has_bias=True):
+    def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12, probing_layers=[], has_bias=True):
         super().__init__()
         self.base_model = base_model
         self.num_layers = num_layers
+        self.probing_layers = probing_layers
         self.vocab_size = len(tokenizer)
         self.d_model = base_model.config.hidden_size
         self.device = base_model.device if hasattr(base_model, "device") else torch.device("cpu")
 
         self.probes = nn.ModuleList([
             self._create_probe(has_bias)
-            for _ in range(self.num_layers - 1)
+            for _ in self.probing_layers
         ])
         self.loss_fn = nn.CrossEntropyLoss()
     
@@ -72,9 +73,9 @@ class NaturalProbingGPT2(BaseProbingGPT2):
 
         total_probe_loss = 0.0
         all_probe_logits = []
-        for i in range(self.num_layers - 1):
-            h = hidden_states[i + 1].detach()
-            logits = self.probes[i](h)
+        for idx, layer in enumerate(self.probing_layers):
+            h = hidden_states[layer + 1].detach()
+            logits = self.probes[idx](h)
             all_probe_logits.append(logits)
             if labels is not None:
                 loss_i = self.loss_fn(logits.view(-1, logits.size(-1)), labels.view(-1))
@@ -89,12 +90,12 @@ class LensProbingGPT2(BaseProbingGPT2):
     def _create_probe(self, has_bias: bool):
         return nn.Linear(self.d_model, self.d_model, bias=has_bias)
     
-    def __init__(self, base_model, tokenizer, num_layers=12, has_bias=True, loss_type="kl"):
-        super().__init__(base_model, tokenizer, num_layers, has_bias)
+    def __init__(self, base_model, tokenizer, num_layers=12, probing_layers=[], has_bias=True, loss_type="kl"):
+        super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias)
         assert loss_type in ("ce", "kl")
         self.loss_type = loss_type
         self.layer_norms = nn.ModuleList([
-            nn.LayerNorm(self.d_model) for _ in range(self.num_layers - 1)
+            nn.LayerNorm(self.d_model) for _ in probing_layers
         ])
 
         # Freeze base model
@@ -123,10 +124,10 @@ class LensProbingGPT2(BaseProbingGPT2):
             final_probs = F.softmax(final_logits, dim=-1)  # once
         
         
-        for i in range(self.num_layers - 1):  # layers 1 to 11
-            h = hidden_states[i + 1]  # [B, S, D]
-            probe_projected = self.probes[i](h)
-            probe_projected_normalized = self.layer_norms[i](probe_projected)
+        for idx, layer in enumerate(self.probing_layers):
+            h = hidden_states[layer + 1].detach()
+            probe_projected = self.probes[idx](h)
+            probe_projected_normalized = self.layer_norms[idx](probe_projected)
             
             probe_logits = self.base_model.lm_head(probe_projected_normalized)  # self.base_model.lm_head is frozen
             all_probe_logits.append(probe_logits)
