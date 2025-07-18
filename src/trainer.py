@@ -20,6 +20,7 @@ from tokenizer.wordlevel_tokenizer import TrainableWordTokenizer
 seed = 42
 tokenizer = TrainableWordTokenizer(vocab_file='tokenizer/vocab.json')
 BATCH_SIZE = 16
+PROBE_CHECKPOINT_DIR = '/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s42_shuffled/'
 
 
 def step_num(epoches: int, dataset: Dataset):
@@ -95,6 +96,23 @@ def prepare_dataloader(dataset: Dataset, batch_size: int):
     return dataloader
 
 
+def save_checkpoint(model: torch.nn.Module, optimizer: AdamW, scheduler: Any, epoch: int, epoch_step: int, global_step: int):
+    """Save a checkpoint with the model, optimizer, scheduler, and dataset state."""
+    os.makedirs(PROBE_CHECKPOINT_DIR, exist_ok=True)
+    checkpoint_path = os.path.join(PROBE_CHECKPOINT_DIR, f'checkpoint_{epoch}_{global_step}.pt')
+    model_state_dict = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
+    torch.save({
+        'model_state_dict': model_state_dict,
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+        'epoch': epoch,
+        'epoch_step': epoch_step,
+        'global_step': global_step,
+        'rng_state': torch.get_rng_state(),
+        'cuda_rng_state': torch.cuda.get_rng_state_all()
+    }, checkpoint_path)
+    print(f'Checkpoint saved to {checkpoint_path}')
+
 
 CHECKPOINTS_DIR = '/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s42_shuffled/'
 files_sorted = get_files_sorted(CHECKPOINTS_DIR)  # will be overrided
@@ -116,7 +134,7 @@ if __name__ == '__main__':
     scheduler = get_scheduler(
         'linear', optimizer=optimizer, num_warmup_steps=1000, num_training_steps=step_num(effective_epochs, dataset)
     )
-    global_block_no = 0
+    global_step = 0
     for epoch in range(effective_epochs):
         epoch_step = 0
         epoch_loss = 0
@@ -125,10 +143,10 @@ if __name__ == '__main__':
         for batch_no, batch in enumerate(progress_bar):
             vocab_size = model.config.vocab_size
 
-            assert batch['input_ids'].max() < vocab_size, f"Error: Input ID = {batch['input_ids'].max()} exceeds vocab size={vocab_size} on {global_block_no}"
+            assert batch['input_ids'].max() < vocab_size, f"Error: Input ID = {batch['input_ids'].max()} exceeds vocab size={vocab_size} on {global_step}"
 
-            if global_block_no <= -1:
-                global_block_no += 1
+            if global_step <= -1:
+                global_step += 1
                 epoch_step += 1
                 continue
             batch = {key: value.to(device) for key, value in batch.items()}
@@ -158,7 +176,7 @@ if __name__ == '__main__':
                 progress_bar.set_postfix({'loss': loss.item()})
 
                 # Increment global block number
-                global_block_no += 1
+                global_step += 1
                 epoch_step += 1
 
             except Exception as e:
@@ -166,4 +184,6 @@ if __name__ == '__main__':
                 raise e
 
         print(f'Epoch {epoch + 1} completed. Average loss: {epoch_loss / epoch_step}')
+        save_checkpoint(probe_model, optimizer, scheduler, epoch, epoch_step, global_step)
         epoch_step = 0
+        
