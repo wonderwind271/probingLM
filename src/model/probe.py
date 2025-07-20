@@ -135,7 +135,9 @@ class LensProbingGPT2(BaseProbingGPT2):
             if labels is not None:
                 if self.loss_type == "ce":
                     # Cross-entropy with next token labels
-                    loss_i = self.loss_fn(probe_logits.view(-1, probe_logits.size(-1)), labels.view(-1))
+                    shifted_probe_logits = probe_logits[:, :-1, :]
+                    shifted_labels = labels[:, 1:]
+                    loss_i = self.loss_fn(shifted_probe_logits.reshape(-1, shifted_probe_logits.size(-1)), shifted_labels.reshape(-1))
 
                 elif self.loss_type == "kl":
                     # KL divergence to final logits

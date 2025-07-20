@@ -6,7 +6,10 @@ word_list2 = ['box', 'book', 'ball', 'hand', 'paper', 'table', 'toy', 'head', 'c
 context_file_idxs = ['', '2', '5_0', '5_1', '5_2', '5_3', '5_4', '6_0', '6_1', '6_2']
 result_template = 'context{}_list2_envsingle_result.json'
 
-analysis_dirs = [('probe_s42_0_5', 6), ('probe_s42_6_10', 5)]
+dir_template = 'probe_result/childes_warmup_s42_c{cid}_shuffled_tunedlens_layer{layer_num}'
+
+cid = 28
+analysis_dirs = [(dir_template.format(cid=cid, layer_num=5), 6), (dir_template.format(cid=cid, layer_num=10), 5)]
 all_res = []
 
 for dir, layer_num in analysis_dirs:
@@ -24,7 +27,9 @@ for dir, layer_num in analysis_dirs:
     all_res += all_res_dir
     
 print(all_res)
-plt.plot(list(range(1,13)), all_res+[4.3])
+actual_surprisal = 4.4247
+plt.plot(list(range(1,13)), all_res+[actual_surprisal])
 plt.xlabel('layer')
 plt.ylabel('avg surprisal')
+plt.title('layer probing on step 15000')
 plt.show()
