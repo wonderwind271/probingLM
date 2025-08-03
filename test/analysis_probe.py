@@ -5,11 +5,13 @@ import matplotlib.pyplot as plt
 word_list2 = ['box', 'book', 'ball', 'hand', 'paper', 'table', 'toy', 'head', 'car', 'chair', 'room', 'picture', 'doll', 'cup', 'towel', 'door', 'mouth', 'camera', 'duck', 'face', 'truck', 'bottle', 'puzzle', 'bird', 'tape', 'finger', 'bucket', 'block', 'stick', 'elephant', 'hat', 'bed', 'arm', 'dog', 'kitchen', 'spoon', 'hair', 'blanket', 'horse', 'tray', 'train', 'cow', 'foot', 'couch', 'necklace', 'cookie', 'plate', 'telephone', 'window', 'brush', 'ear', 'pig', 'purse', 'hammer', 'cat', 'shoulder', 'garage', 'button', 'monkey', 'pencil', 'shoe', 'drawer', 'leg', 'bear', 'milk', 'egg', 'bowl', 'juice', 'ladder', 'basket', 'coffee', 'bus', 'food', 'apple', 'bench', 'sheep', 'airplane', 'comb', 'bread', 'eye', 'animal', 'knee', 'shirt', 'cracker', 'glass', 'light', 'game', 'cheese', 'sofa', 'giraffe', 'turtle', 'stove', 'clock', 'star', 'refrigerator', 'banana', 'napkin', 'bunny', 'farm', 'money']  # 100 in total. from childes_word_list intersect vsdiag vocab intersect CDI nouns catagory and take first 100
 context_file_idxs = ['', '2', '5_0', '5_1', '5_2', '5_3', '5_4', '6_0', '6_1', '6_2']
 result_template = 'context{}_list2_envsingle_result.json'
+seed = 442
 
-dir_template = 'probe_result/childes_warmup_s42_c{cid}_shuffled_tunedlens_layer{layer_num}'
+dir_template = 'probe_result/childes_warmup_s{seed}_c{cid}_kl_shuffled_tunedlens_layer{layer_num}'
 
-cid = 28
-analysis_dirs = [(dir_template.format(cid=cid, layer_num=5), 6), (dir_template.format(cid=cid, layer_num=10), 5)]
+cid = 4
+analysis_dirs = [(dir_template.format(seed=seed, cid=cid, layer_num=5), 6), (dir_template.format(seed=seed, cid=cid, layer_num=10), 5)]
+analysis_dir2 = [(dir_template.format(seed=seed, cid=cid, layer_num=11), 1)]
 all_res = []
 
 for dir, layer_num in analysis_dirs:
@@ -27,9 +29,9 @@ for dir, layer_num in analysis_dirs:
     all_res += all_res_dir
     
 print(all_res)
-actual_surprisal = 4.4247
+actual_surprisal = 7.848472314357758
 plt.plot(list(range(1,13)), all_res+[actual_surprisal])
 plt.xlabel('layer')
 plt.ylabel('avg surprisal')
-plt.title('layer probing on step 15000')
+plt.title(f'layer probing (KL) on step 20000 for seed {seed}')
 plt.show()

@@ -17,10 +17,35 @@ from transformers import (AdamW, AutoTokenizer, GPT2Config, GPT2LMHeadModel,
 from model.probe import ProbingOutput, LensProbingGPT2, NaturalProbingGPT2
 from tokenizer.wordlevel_tokenizer import TrainableWordTokenizer
 
-seed = 42
+import argparse
+
+# Create argument parser
+parser = argparse.ArgumentParser(description="Process some integers.")
+
+# Add arguments
+parser.add_argument("--cid", type=int, help="checkpoint id", default=42)
+parser.add_argument("--seed", type=int, help="Random seed", default=42)
+parser.add_argument("--oid", type=int, help="Option id", default=1)
+
+# Parse arguments
+args = parser.parse_args()
+
+# Access values
+cid = args.cid
+seed = args.seed
+oid = args.oid
+print(f"cid={cid}, seed={seed}, oid={oid}")
+
 tokenizer = TrainableWordTokenizer(vocab_file='tokenizer/vocab.json')
 BATCH_SIZE = 8
-PROBE_CHECKPOINT_DIR = '/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s42_shuffled_tunedlens/'
+
+layer_option_1 = [0,1,2,3,4,5]
+layer_option_2 = [6,7,8,9,10]
+layer_option_3 = [11]
+layer_options = [layer_option_1, layer_option_2, layer_option_3]
+probing_layers = layer_options[oid]
+loss_type = 'kl' 
+PROBE_CHECKPOINT_DIR = f'/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s{seed}_c{cid}_{loss_type}_shuffled_tunedlens_layer{probing_layers[-1]}/'
 
 
 def step_num(epoches: int, dataset: Dataset):
@@ -125,18 +150,19 @@ def save_checkpoint(model: torch.nn.Module, optimizer: AdamW, scheduler: Any, ep
     print(f'Checkpoint saved to {checkpoint_path}')
 
 
-CHECKPOINTS_DIR = '/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s42_shuffled/'
+CHECKPOINTS_DIR = f'/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s{seed}/'
 files_sorted = get_files_sorted(CHECKPOINTS_DIR)  # will be overrided
 LEARNING_RATE = 5e-4
 
-print(files_sorted[-1])
+print(files_sorted)
+print(files_sorted[cid])
 effective_epochs = 4
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = checkpoint_path_to_model(files_sorted[-1]).to(device)
+    model = checkpoint_path_to_model(files_sorted[cid]).to(device)
     model.eval()
-    probe_model = LensProbingGPT2(model, tokenizer, probing_layers=[6,7,8,9,10]).to(device)
+    probe_model = LensProbingGPT2(model, tokenizer, probing_layers=probing_layers, loss_type=loss_type).to(device)
     dataset = load_dataset('wonderwind271/childes-pretrain')['train']
     tokenized_dataset = dataset.map(lambda x: tokenize_function(x, tokenizer), batched=True)
     tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])

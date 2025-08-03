@@ -1,13 +1,49 @@
-from trainer import *
-import json
+# from trainer import *
+import math
+import os
+import random
+from typing import Any, List
 
-probe_model = probe_checkpoint_path_to_model('/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/childes_warmup_s42_shuffled_tunedlens_05/checkpoint_3_11344.pt', probing_layers=[0,1,2,3,4,5])
+import numpy as np
+import torch
+import wandb
+import yaml
+import glob
+from datasets import Dataset, concatenate_datasets, load_dataset
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import (AdamW, AutoTokenizer, GPT2Config, GPT2LMHeadModel,
+                          get_scheduler)
+
+import torch.nn.functional as F
+from typing import List
+from model.probe import ProbingOutput, LensProbingGPT2, NaturalProbingGPT2
+from tokenizer.wordlevel_tokenizer import TrainableWordTokenizer
+import json
+tokenizer = TrainableWordTokenizer(vocab_file='tokenizer/vocab.json')
+
+def probe_checkpoint_path_to_model(path, probing_layers):
+    """Load probe checkpoint to model."""
+    checkpoint = torch.load(path)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = GPT2LMHeadModel(config=GPT2Config()).to(device)
+    model.resize_token_embeddings(len(tokenizer))
+    model.eval()
+    probe_model = LensProbingGPT2(model, tokenizer, probing_layers=probing_layers).to(device)
+    probe_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+    return probe_model
+
+oid = 0
+layer = [5,10,11][oid]
+cid = 42
+seed = 442
+
+item_name = f'childes_warmup_s{seed}_c{cid}_kl_shuffled_tunedlens_layer{layer}'
+options = [[0,1,2,3,4,5], [6,7,8,9,10],[11]]
+probe_model = probe_checkpoint_path_to_model(f'/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/{item_name}/checkpoint_3_11344.pt', probing_layers=options[oid])
 probe_model.eval()
 
 
-import torch
-import torch.nn.functional as F
-from typing import List
 
 @torch.no_grad()
 def get_probe_surprisals(probe_model, tokenizer, context: str, target_token: str) -> List[float]:
@@ -69,7 +105,7 @@ if __name__ == '__main__':
         else:
             context_file_template = 'visdiag_archive/vis_context_{}_list2.json'
             context_file_idxs = list(range(1, 11))
-        dir_path = f'probe_s42_0_5'
+        dir_path = f'probe_result/{item_name}'
         os.makedirs(dir_path, exist_ok=True)
         result_template = dir_path+'/context{}_list2_envsingle_result.json'
         updated_context_file_template = 'other/word_context{}_updated.json'
@@ -87,9 +123,9 @@ if __name__ == '__main__':
             all_lan = []
             updated_content = {}
 
-            if model_id == 0:
-                for k in content:
-                    content[k]['env'] = k  # env have single word for childes, not vsdiag
+            # if model_id == -1:
+            #     for k in content:
+            #         content[k]['env'] = k  # env have single word for childes, not vsdiag
 
             for word in word_list:
                 env = content[word]['env'].replace('The child', '').replace('.', '')
