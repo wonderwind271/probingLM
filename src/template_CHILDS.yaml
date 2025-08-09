@@ -24,7 +24,7 @@ training:
   grad_clip_norm: 1.0
 
   # data loader
-  batch_size_per_gpu: 2
+  batch_size_per_gpu: 4
   num_workers: 4
   num_threads: 32
   prefetch_factor: 32
@@ -35,7 +35,7 @@ training:
   train_split: ['ACL', 'NAACL', 'EMNLP']  # merge all splits in train_split and train, if is_train_all == False
 
   training_cycle_unit: 'steps'  # 'epochs' | 'steps'
-  training_cycle_value: 20000
+  training_cycle_value: 10000  # original: 2w
   seed: 42
 
   lr: 0.00005

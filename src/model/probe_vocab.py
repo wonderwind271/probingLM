@@ -1,4 +1,4 @@
-from .probe import BaseProbingGPT2, ProbingOutput
+from .probe import BaseProbingGPT2
 from abc import ABC, abstractmethod
 import torch.nn as nn
 import torch
@@ -19,7 +19,6 @@ class VocabProbingGPT2(BaseProbingGPT2):
         super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias)
         assert loss_type in ("ce", "kl")
         self.loss_type = loss_type
-        # self.device = device
         self.freeze_backbone = freeze_backbone
         
         if freeze_backbone:
@@ -30,13 +29,7 @@ class VocabProbingGPT2(BaseProbingGPT2):
         print('loss type =', loss_type, 'probing layers =', probing_layers)
     
     def forward(self, input_ids, attention_mask=None, labels=None):
-        # input_ids = input_ids.to(self.device)
-        # if attention_mask is not None:
-        #     attention_mask = attention_mask.to(self.device)
-        # if labels is not None:
-        #     labels = labels.to(self.device)
         assert labels is not None
-        
         outputs = self.base_model(input_ids=input_ids,
                                   attention_mask=attention_mask,
                                   output_hidden_states=True,
@@ -68,10 +61,9 @@ class VocabProbingGPT2(BaseProbingGPT2):
                 total_probe_loss += loss_i
 
         if not self.freeze_backbone:
-            return ProbingOutput({'total_loss': outputs.loss + total_probe_loss, 'loss_main': outputs.loss, 'total_probe_loss': total_probe_loss, 'all_probe_logits': probe_logits_ls})
+            return {'total_loss': outputs.loss + total_probe_loss, 'loss_main': outputs.loss, 'total_probe_loss': total_probe_loss, 'all_probe_logits': probe_logits_ls}
         else:
-            return ProbingOutput({'total_loss': total_probe_loss, 'total_probe_loss': total_probe_loss, 'all_probe_logits': probe_logits_ls})
-
+            return {'total_loss': total_probe_loss, 'total_probe_loss': total_probe_loss, 'all_probe_logits': probe_logits_ls}
 
 
 if __name__ == "__main__":

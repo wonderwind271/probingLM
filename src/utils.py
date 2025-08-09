@@ -84,7 +84,7 @@ def prepare_dataloader(dataset: Dataset, batch_size: int, seed: int):
     """Prepare the DataLoader for the unused portion of the dataset."""
     g = torch.Generator()
     g.manual_seed(seed)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, generator=g)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, generator=g, num_workers=2)
     return dataloader
 
 
