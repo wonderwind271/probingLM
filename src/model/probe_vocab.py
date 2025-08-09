@@ -45,6 +45,9 @@ class VocabProbingGPT2(BaseProbingGPT2):
 
         for idx, layer in enumerate(self.probing_layers):
             h = hidden_states[layer + 1]
+            # We don't hope the loss of probes to interfere with GPT2's loss,
+            # so hidden state should be detached. If we use KL loss in native lens,
+            # logits of the original GPT2 should also be detached.  
             probe_logits = self.probes[idx](h.detach())
             probe_logits_ls.append(probe_logits.detach())
 

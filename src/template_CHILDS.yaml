@@ -35,7 +35,7 @@ training:
   train_split: ['ACL', 'NAACL', 'EMNLP']  # merge all splits in train_split and train, if is_train_all == False
 
   training_cycle_unit: 'steps'  # 'epochs' | 'steps'
-  training_cycle_value: 10000  # original: 2w
+  training_cycle_value: 20000  # original: 2w
   seed: 42
 
   lr: 0.00005
@@ -56,6 +56,6 @@ training:
   # wandb
   api_key_path: './wandb_api_keys.yaml'
   wandb_project: 'native_len'
-  wandb_exp_name: 'childes-warmup-s542-zero'
+  wandb_exp_name: 'dataparallel_training'
   wandb_log_every: 1
   wandb_offline: false
