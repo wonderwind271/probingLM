@@ -1,48 +1,12 @@
-# from trainer import *
-import math
-import os
-import random
-from typing import Any, List
-
-import numpy as np
-import torch
-import wandb
-import yaml
-import glob
-from datasets import Dataset, concatenate_datasets, load_dataset
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from transformers import (AdamW, AutoTokenizer, GPT2Config, GPT2LMHeadModel,
-                          get_scheduler)
-
-import torch.nn.functional as F
-from typing import List
-from model.probe import ProbingOutput, LensProbingGPT2, NaturalProbingGPT2
 from tokenizer.wordlevel_tokenizer import TrainableWordTokenizer
 import json
-tokenizer = TrainableWordTokenizer(vocab_file='tokenizer/vocab.json')
-
-def probe_checkpoint_path_to_model(path, probing_layers):
-    """Load probe checkpoint to model."""
-    checkpoint = torch.load(path)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = GPT2LMHeadModel(config=GPT2Config()).to(device)
-    model.resize_token_embeddings(len(tokenizer))
-    model.eval()
-    probe_model = LensProbingGPT2(model, tokenizer, probing_layers=probing_layers).to(device)
-    probe_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
-    return probe_model
-
-oid = 0
-layer = [5,10,11][oid]
-cid = 42
-seed = 442
-
-item_name = f'childes_warmup_s{seed}_c{cid}_kl_shuffled_tunedlens_layer{layer}'
-options = [[0,1,2,3,4,5], [6,7,8,9,10],[11]]
-probe_model = probe_checkpoint_path_to_model(f'/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/{item_name}/checkpoint_3_11344.pt', probing_layers=options[oid])
-probe_model.eval()
-
+import torch
+import torch.nn.functional as F
+from typing import List
+import numpy as np
+from transformers import (GPT2Config, GPT2LMHeadModel)
+from model.probe import LensProbingGPT2
+import os
 
 
 @torch.no_grad()
@@ -60,7 +24,6 @@ def get_probe_surprisals(probe_model, tokenizer, context: str, target_token: str
         raise ValueError("target_token must be a single token under this tokenizer")
 
     target_id = target_ids[0]
-
 
     # Forward through probe model
     output = probe_model(input_ids=context_ids)
@@ -94,63 +57,92 @@ def add_tag(text, tag=':<LAN>'):
         words[i] += tag
     return ' '.join(words)
 
-word_list2 = ['box', 'book', 'ball', 'hand', 'paper', 'table', 'toy', 'head', 'car', 'chair', 'room', 'picture', 'doll', 'cup', 'towel', 'door', 'mouth', 'camera', 'duck', 'face', 'truck', 'bottle', 'puzzle', 'bird', 'tape', 'finger', 'bucket', 'block', 'stick', 'elephant', 'hat', 'bed', 'arm', 'dog', 'kitchen', 'spoon', 'hair', 'blanket', 'horse', 'tray', 'train', 'cow', 'foot', 'couch', 'necklace', 'cookie', 'plate', 'telephone', 'window', 'brush', 'ear', 'pig', 'purse', 'hammer', 'cat', 'shoulder', 'garage', 'button', 'monkey', 'pencil', 'shoe', 'drawer', 'leg', 'bear', 'milk', 'egg', 'bowl', 'juice', 'ladder', 'basket', 'coffee', 'bus', 'food', 'apple', 'bench', 'sheep', 'airplane', 'comb', 'bread', 'eye', 'animal', 'knee', 'shirt', 'cracker', 'glass', 'light', 'game', 'cheese', 'sofa', 'giraffe', 'turtle', 'stove', 'clock', 'star', 'refrigerator', 'banana', 'napkin', 'bunny', 'farm', 'money']  # 100 in total. from childes_word_list intersect vsdiag vocab intersect CDI nouns catagory and take first 100
+
+def probe_checkpoint_path_to_model(path, probing_layers):
+    """Load probe checkpoint to model."""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    checkpoint = torch.load(path, map_location=device)
+    model = GPT2LMHeadModel(config=GPT2Config()).to(device)
+    model.resize_token_embeddings(len(tokenizer))
+    model.eval()
+    probe_model = LensProbingGPT2(model, tokenizer, probing_layers=probing_layers).to(device)
+    probe_model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+    return probe_model
+
+
+word_list = ['box', 'book', 'ball', 'hand', 'paper', 'table', 'toy', 'head', 'car', 'chair', 'room', 'picture', 'doll', 'cup', 'towel', 'door', 'mouth', 'camera', 'duck', 'face', 'truck', 'bottle', 'puzzle', 'bird', 'tape', 'finger', 'bucket', 'block', 'stick', 'elephant', 'hat', 'bed', 'arm', 'dog', 'kitchen', 'spoon', 'hair', 'blanket', 'horse', 'tray', 'train', 'cow', 'foot', 'couch', 'necklace', 'cookie', 'plate', 'telephone', 'window', 'brush', 'ear', 'pig', 'purse', 'hammer', 'cat', 'shoulder', 'garage', 'button', 'monkey', 'pencil', 'shoe', 'drawer', 'leg', 'bear', 'milk', 'egg', 'bowl', 'juice', 'ladder', 'basket', 'coffee', 'bus', 'food', 'apple', 'bench', 'sheep', 'airplane', 'comb', 'bread', 'eye', 'animal', 'knee', 'shirt', 'cracker', 'glass', 'light', 'game', 'cheese', 'sofa', 'giraffe', 'turtle', 'stove', 'clock', 'star', 'refrigerator', 'banana', 'napkin', 'bunny', 'farm', 'money']  # 100 in total. from childes_word_list intersect vsdiag vocab intersect CDI nouns catagory and take first 100
+
+
+def overall_surprisal():
+    context_file_template = '/u501/x25luo/codebase/probingLM/result_s42_6_10/context{}_list2_envsingle_result.json'
+    context_file_idxs = ['', '2', '5_0', '5_1', '5_2', '5_3', '5_4', '6_0', '6_1', '6_2']
+    avg_surprisal = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+    overall_item = 0
+
+    for file_idx in context_file_idxs:
+        result_json = context_file_template.format(file_idx)
+        with open(result_json, 'r') as fp:
+            surprisal = json.load(fp)
+        overall_item += len(surprisal)
+        for k in surprisal:
+            avg_surprisal += np.array(surprisal[k])
+    print('total item:', overall_item)
+    print('surprisal in step 6-10')
+    print(avg_surprisal/overall_item)
 
 
 if __name__ == '__main__':
-    for model_id in [0]:
-        if model_id == 0:
-            context_file_template = 'word_context_archive/word_context{}.json'
-            context_file_idxs = ['', '2', '5_0', '5_1', '5_2', '5_3', '5_4', '6_0', '6_1', '6_2']
-        else:
-            context_file_template = 'visdiag_archive/vis_context_{}_list2.json'
-            context_file_idxs = list(range(1, 11))
-        dir_path = f'probe_result/{item_name}'
-        os.makedirs(dir_path, exist_ok=True)
-        result_template = dir_path+'/context{}_list2_envsingle_result.json'
-        updated_context_file_template = 'other/word_context{}_updated.json'
-        word_list = word_list2
+    tokenizer = TrainableWordTokenizer(vocab_file='/u501/x25luo/codebase/probingLM/src/tokenizer/vocab.json')
+    probe_model = probe_checkpoint_path_to_model('/u501/x25luo/codebase/probingLM/ckpt/childes_warmup_s42_shuffled/checkpoint_0_2836.pt', probing_layers=[6,7,8,9,10])
+    print('### checkpoint_1_5672.pt')
+    probe_model.eval()
 
-        for file_idx in context_file_idxs:
-            filename = context_file_template.format(file_idx)
-            result_json = result_template.format(file_idx)
-            print('now process: '+filename)
-            result_dict = {}
-            with open(filename) as fp:
-                content = json.load(fp)
-            # word_list = list(content.keys())
-            all_env = []
-            all_lan = []
-            updated_content = {}
+    context_file_template = '/u501/x25luo/codebase/trabank-dev/test/word_context_archive/word_context{}.json'
+    context_file_idxs = ['', '2', '5_0', '5_1', '5_2', '5_3', '5_4', '6_0', '6_1', '6_2']
+    
+    dir_path = f'/u501/x25luo/codebase/probingLM/result_s42_6_10'
+    os.makedirs(dir_path, exist_ok=True)
+    result_template = dir_path+'/context{}_list2_envsingle_result.json'
+    updated_context_file_template = 'other/word_context{}_updated.json'
 
-            # if model_id == -1:
-            #     for k in content:
-            #         content[k]['env'] = k  # env have single word for childes, not vsdiag
+    for file_idx in context_file_idxs:
+        filename = context_file_template.format(file_idx)
+        result_json = result_template.format(file_idx)
+        print('now process: '+filename)
+        result_dict = {}
+        with open(filename) as fp:
+            content = json.load(fp)
+        all_env = []
+        all_lan = []
+        updated_content = {}
 
-            for word in word_list:
-                env = content[word]['env'].replace('The child', '').replace('.', '')
-                lan = content[word]['lan'].replace('"', '')
-                lan = remove_last_occurrence(lan, word)
-                updated_content[word] = {'env': env, 'lan': lan}
-                all_env.append(env)
-                all_lan.append(lan)
+        for k in content:
+            content[k]['env'] = k  # env have single word for childes, not vsdiag
 
-            # with open(updated_context_file_template.format(file_idx), 'w') as fp:
-            #     json.dump(updated_content, fp)
+        for word in word_list:
+            env = content[word]['env'].replace('The child', '').replace('.', '')
+            lan = content[word]['lan'].replace('"', '')
+            lan = remove_last_occurrence(lan, word)
+            updated_content[word] = {'env': env, 'lan': lan}
+            all_env.append(env)
+            all_lan.append(lan)
 
-            surprisal_list = []
-            env_list = all_env
-            lan_list = all_lan
-            # print(env_list)
-            # print(lan_list)
-            for word_idx, cur_env in enumerate(env_list):
-                cur_lan = lan_list[word_idx]
-                context = '<CHI> '+add_tag(cur_env, ':<ENV>') + ' <CHI> ' + add_tag(cur_lan)
-                cur_word = word_list[word_idx]
-                target_token = add_tag(cur_word)
-                surprisals = get_probe_surprisals(probe_model, tokenizer, context, target_token)
-                result_dict[cur_word] = surprisals
-                if (word_idx+1) % 10 == 0:
-                    print(f'completed {word_idx+1} / 100 for {filename}')
-            with open(result_json, 'w') as fp:
-                json.dump(result_dict, fp)
+        # with open(updated_context_file_template.format(file_idx), 'w') as fp:
+        #     json.dump(updated_content, fp)
+
+        surprisal_list = []
+        env_list = all_env
+        lan_list = all_lan
+        for word_idx, cur_env in enumerate(env_list):
+            cur_lan = lan_list[word_idx]
+            context = '<CHI> '+add_tag(cur_env, ':<ENV>') + ' <CHI> ' + add_tag(cur_lan)
+            cur_word = word_list[word_idx]
+            target_token = add_tag(cur_word)
+            surprisals = get_probe_surprisals(probe_model, tokenizer, context, target_token)
+            result_dict[cur_word] = surprisals
+            if (word_idx+1) % 10 == 0:
+                print(f'completed {word_idx+1} / 100 for {filename}')
+        with open(result_json, 'w') as fp:
+            json.dump(result_dict, fp)
+
+    overall_surprisal()

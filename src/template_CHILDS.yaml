@@ -1,0 +1,61 @@
+model:
+
+  name: gpt2-base
+  class_name: GPT2LMHeadModel
+
+  transformer:
+    d_head: 64
+    n_head: 12
+    n_layer: 12
+
+  tokenizer:
+    model_max_length: 512
+    tokenizer_type: 'wordlevel'  # 'gpt2' | 'wordlevel'
+    vocab_file: '/u501/x25luo/codebase/trabank-dev/train/vocab.json'  # omitted if tokenizer_type is 'gpt2'
+
+training:
+
+  # general settings
+  use_tf32: true
+  use_amp: true
+  amp_dtype: 'bf16'
+  torch_compile: false
+  grad_accum_steps: 1
+  grad_clip_norm: 1.0
+
+  # data loader
+  batch_size_per_gpu: 4
+  num_workers: 4
+  num_threads: 32
+  prefetch_factor: 32
+
+  # dataset
+  path: '/u501/x25luo/codebase/probingLM/src/train-00000-of-00001.parquet'
+  is_train_all: True  # merge all splits and train, ignoring the following dataset configs
+  train_split: ['ACL', 'NAACL', 'EMNLP']  # merge all splits in train_split and train, if is_train_all == False
+
+  training_cycle_unit: 'steps'  # 'epochs' | 'steps'
+  training_cycle_value: 10000  # original: 2w
+  seed: 42
+
+  lr: 0.00005
+  # beta1: 0.9
+  # beta2: 0.99
+  # weight_decay: 0.01
+  warmup_steps: 1000
+  reset_lr: false
+  reset_weight_decay: false
+
+  # checkpoint
+  checkpoint_every: 500
+  checkpoint_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/seed42/'
+
+  # output
+  output_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed42/'
+
+  # wandb
+  api_key_path: './wandb_api_keys.yaml'
+  wandb_project: 'native_len'
+  wandb_exp_name: 'childes-warmup-s542-zero'
+  wandb_log_every: 1
+  wandb_offline: false

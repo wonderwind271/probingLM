@@ -2,7 +2,9 @@ from abc import ABC, abstractmethod
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
 from transformers import GPT2LMHeadModel
+import copy
 
 
 class ProbingOutput():
@@ -24,7 +26,8 @@ class BaseProbingGPT2(nn.Module, ABC):
         self.probing_layers = probing_layers
         self.vocab_size = len(tokenizer)
         self.d_model = base_model.config.hidden_size
-        self.device = base_model.device if hasattr(base_model, "device") else torch.device("cpu")
+        self.device = base_model.device if hasattr(
+            base_model, "device") else torch.device("cpu")
 
         self.probes = nn.ModuleList([
             self._create_probe(has_bias)
@@ -53,8 +56,9 @@ class BaseProbingGPT2(nn.Module, ABC):
 
 class NaturalProbingGPT2(BaseProbingGPT2):
     """Main LLM + probing loss (natural probing, train both)"""
+    
     def _create_probe(self, has_bias: bool):
-        return nn.Linear(self.d_model, self.vocab_size, bias=has_bias)
+        return nn.Linear(self.d_model, self.d_model, bias=has_bias)
     
     def forward(self, input_ids, attention_mask=None, labels=None):
         input_ids = input_ids.to(self.device)
@@ -73,12 +77,15 @@ class NaturalProbingGPT2(BaseProbingGPT2):
 
         total_probe_loss = 0.0
         all_probe_logits = []
+        
         for idx, layer in enumerate(self.probing_layers):
             h = hidden_states[layer + 1].detach()
-            logits = self.probes[idx](h)
+            logits = self.base_model.lm_head(
+                self.base_model.transformer.ln_f(self.probes[idx](h)))  # TODO: checking
             all_probe_logits.append(logits)
             if labels is not None:
-                loss_i = self.loss_fn(logits.view(-1, logits.size(-1)), labels.view(-1))
+                loss_i = self.loss_fn(
+                    logits.view(-1, logits.size(-1)), labels.view(-1))
                 total_probe_loss += loss_i
 
         total_loss = loss_main + total_probe_loss
