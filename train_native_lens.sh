@@ -12,8 +12,7 @@
 
 #SBATCH --export=ALL
 
-export PYTHONUNBUFFERED=1
-export CUDA_LAUNCH_BLOCKING=1
-
+echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 echo "training native lens with multiGPU"
+
 /u501/x25luo/.conda/envs/grounding/bin/python src/train_native_lens.py

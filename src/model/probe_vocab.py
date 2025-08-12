@@ -14,19 +14,25 @@ class VocabProbingGPT2(BaseProbingGPT2):
     def _create_probe(self, has_bias: bool):
         return nn.Linear(self.d_model, self.vocab_size, bias=has_bias)
     
-    def __init__(self, base_model, tokenizer, num_layers=12, probing_layers=[], has_bias=True, loss_type="ce", freeze_backbone= False):  # device=None, 
+    def __init__(self, base_model, tokenizer, num_layers=12, probing_layers=[], has_bias=True, loss_type="ce", freeze_backbone=False, device=None, add_layernorm=False):
         '''Freeze backbone: whether to train the backbone model and lens at the same time'''
-        super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias)
+        super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias, device=device)
         assert loss_type in ("ce", "kl")
         self.loss_type = loss_type
         self.freeze_backbone = freeze_backbone
+        
+        self.add_layernorm = add_layernorm
+        if self.add_layernorm:
+            self.layer_norms = nn.ModuleList([
+                nn.LayerNorm(self.d_model) for _ in probing_layers
+            ])
         
         if freeze_backbone:
             for param in self.base_model.parameters():
                 param.requires_grad = False
             self.base_model.eval()
 
-        print('loss type =', loss_type, 'probing layers =', probing_layers)
+        print('loss type =', loss_type, ', probing layers =', probing_layers)
     
     def forward(self, input_ids, attention_mask=None, labels=None):
         assert labels is not None
@@ -44,12 +50,15 @@ class VocabProbingGPT2(BaseProbingGPT2):
             final_probs = F.softmax(final_logits, dim=-1)
 
         for idx, layer in enumerate(self.probing_layers):
-            h = hidden_states[layer + 1]
+            h = hidden_states[layer + 1].detach()
+            if self.add_layernorm:
+                h = self.layer_norms[idx](h)
+                
             # We don't hope the loss of probes to interfere with GPT2's loss,
             # so hidden state should be detached. If we use KL loss in native lens,
             # logits of the original GPT2 should also be detached.  
-            probe_logits = self.probes[idx](h.detach())
-            probe_logits_ls.append(probe_logits.detach())
+            probe_logits = self.probes[idx](h)
+            probe_logits_ls.append(probe_logits)
 
             if labels is not None:
                 if self.loss_type == "ce":

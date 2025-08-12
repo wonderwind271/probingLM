@@ -19,15 +19,14 @@ class ProbingOutput():
 
 
 class BaseProbingGPT2(nn.Module, ABC):
-    def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12, probing_layers=[], has_bias=True):
+    def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12, probing_layers=[], has_bias=True, device=None):
         super().__init__()
         self.base_model = base_model
         self.num_layers = num_layers
         self.probing_layers = probing_layers
         self.vocab_size = len(tokenizer)
         self.d_model = base_model.config.hidden_size
-        self.device = base_model.device if hasattr(
-            base_model, "device") else torch.device("cpu")
+        self.device = device if device is not None else torch.device("cpu")
 
         self.probes = nn.ModuleList([
             self._create_probe(has_bias)
@@ -101,9 +100,9 @@ class LensProbingGPT2(BaseProbingGPT2):
         super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias)
         assert loss_type in ("ce", "kl")
         self.loss_type = loss_type
-        self.layer_norms = nn.ModuleList([
-            nn.LayerNorm(self.d_model) for _ in probing_layers
-        ])
+        # self.layer_norms = nn.ModuleList([
+        #     nn.LayerNorm(self.d_model) for _ in probing_layers
+        # ])
 
         # Freeze base model
         for param in self.base_model.parameters():

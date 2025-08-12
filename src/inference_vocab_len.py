@@ -10,9 +10,9 @@ from inference import word_list, add_tag, remove_last_occurrence
 from matplotlib import pyplot as plt
 from pathlib import Path
 
-
 import matplotlib.pyplot as plt
 from pathlib import Path
+
 
 def plot_attention_weights(ls, title='Surprisal - Attached Natural Lens CE Loss'):
     plt.figure(figsize=(8, 5))
@@ -20,12 +20,12 @@ def plot_attention_weights(ls, title='Surprisal - Attached Natural Lens CE Loss'
     labels = ['simple context', 'normal context']
 
     for idx, (surprisal_list, label) in enumerate(zip(ls, labels)):
-        x_coords = list(range(1, 13))  # 横坐标从 1 到 12
+        x_coords = list(range(1, 13))
         plt.plot(x_coords, surprisal_list, label=label, color=colors[idx], marker='o')
         for i, value in enumerate(surprisal_list):
             plt.text(
                 x_coords[i], value + 0.02,
-                f'{value:.4f}',  # 保留四位小数
+                f'{value:.4f}', 
                 fontsize=8,
                 ha='center',
                 bbox=dict(facecolor='white', alpha=0.5, edgecolor='none', pad=1.5)
@@ -60,7 +60,7 @@ def get_probe_surprisals(probe_model, tokenizer, context: str, target_token: str
     # Forward through probe model
     output = probe_model(input_ids=context_ids)
     all_probe_logits = output.all_probe_logits  # List[Tensor], each [1, seq_len, vocab_size]
-    assert len(all_probe_logits) == 1
+    # assert len(all_probe_logits) == 1
     surprisals = []
     for logits in all_probe_logits:
         # Get logits for the last position (where next-token prediction happens)
@@ -87,6 +87,25 @@ def probe_checkpoint_path_to_model(path, probing_layers):
     return probe_model
 
 
+def handle_template(filename, simple=True):
+    '''open a template file and process it'''
+    with open(filename) as fp:
+        content = json.load(fp)
+    updated_content = {}
+
+    if simple:  # env have single word for childes
+        for k in content:
+            content[k]['env'] = k  
+
+    for word in word_list:
+        env = content[word]['env'].replace('The child', '').replace('.', '')
+        lan = content[word]['lan'].replace('"', '')
+        lan = remove_last_occurrence(lan, word)
+        updated_content[word] = {'env': env, 'lan': lan}
+
+    return updated_content
+
+
 def cal_surprisal(tokenizer, simple=True):
     context_file_template = '/u501/x25luo/codebase/trabank-dev/test/word_context_archive/word_context{}.json'
     context_file_idxs = ['', '2', '5_0', '5_1', '5_2', '5_3', '5_4', '6_0', '6_1', '6_2']
@@ -102,22 +121,10 @@ def cal_surprisal(tokenizer, simple=True):
         for file_idx in context_file_idxs:
             filename = context_file_template.format(file_idx)
             print('now process: '+filename)
+            updated_content = handle_template(filename, simple)
 
-            with open(filename) as fp:
-                content = json.load(fp)
-            updated_content = {}
             surprisal_dict[layer][f'context{file_idx}'] = dict()
-
-            if simple:
-                for k in content:
-                    content[k]['env'] = k  # env have single word for childes, not vsdiag
-
-            for word in word_list:
-                env = content[word]['env'].replace('The child', '').replace('.', '')
-                lan = content[word]['lan'].replace('"', '')
-                lan = remove_last_occurrence(lan, word)
-                updated_content[word] = {'env': env, 'lan': lan}
-
+        
             for word, content in updated_content.items():
                 context = '<CHI> '+add_tag(content['env'], ':<ENV>') + ' <CHI> ' + add_tag(content['lan'])
                 target_token = add_tag(word)

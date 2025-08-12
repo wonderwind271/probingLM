@@ -2,7 +2,6 @@ import math
 import os
 import random
 from typing import Any, List
-
 import numpy as np
 import torch
 import glob
@@ -65,14 +64,13 @@ def get_files_sorted(dir: str):
 
 
 def checkpoint_path_to_model(path, tokenizer, device):
-    """Load checkpoint to model."""
+    """Load checkpoint to GPT2 model."""
     checkpoint = torch.load(path, map_location=device)
     model = GPT2LMHeadModel(config=GPT2Config())
     # NOTICE: only the following could work unders Xiaoxi's environment
     model.resize_token_embeddings(tokenizer.vocab_size)
     model.load_state_dict(checkpoint['model_state_dict'])
     return model
-
 
 
 def tokenize_function(example, tokenizer):
@@ -84,7 +82,7 @@ def prepare_dataloader(dataset: Dataset, batch_size: int, seed: int):
     """Prepare the DataLoader for the unused portion of the dataset."""
     g = torch.Generator()
     g.manual_seed(seed)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, generator=g, num_workers=2)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, generator=g, num_workers=0)
     return dataloader
 
 
@@ -109,3 +107,14 @@ def save_model_safely(model, output_dir):
     else:
         model_to_save = model
     model_to_save.save_pretrained(output_dir)
+    
+    
+def watch_memory():
+    for gpu_id in range(torch.cuda.device_count()): 
+        total_memory, free_memory = torch.cuda.mem_get_info(0)
+        total_memory_gb = total_memory / 1e9
+        free_memory_gb = free_memory / 1e9
+        print(f"GPU {gpu_id} total memory: {total_memory_gb:.2f} GB")
+        print(f"GPU {gpu_id} free memory: {free_memory_gb:.2f} GB")
+        max_memory = torch.cuda.max_memory_allocated() / 1e9
+        print(f"GPU {gpu_id} maximum allocated memory: {max_memory:.2f} GB")
