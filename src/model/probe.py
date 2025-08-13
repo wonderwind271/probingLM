@@ -100,9 +100,9 @@ class LensProbingGPT2(BaseProbingGPT2):
         super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias)
         assert loss_type in ("ce", "kl")
         self.loss_type = loss_type
-        # self.layer_norms = nn.ModuleList([
-        #     nn.LayerNorm(self.d_model) for _ in probing_layers
-        # ])
+        self.layer_norms = nn.ModuleList([
+            nn.LayerNorm(self.d_model) for _ in probing_layers
+        ])
 
         # Freeze base model
         for param in self.base_model.parameters():
@@ -156,4 +156,3 @@ class LensProbingGPT2(BaseProbingGPT2):
 
         # return total_probe_loss, None, total_probe_loss, all_probe_logits
         return ProbingOutput({'total_loss': total_probe_loss, 'total_probe_loss': total_probe_loss, 'all_probe_logits': all_probe_logits})
-
