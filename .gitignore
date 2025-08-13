@@ -6,6 +6,11 @@
 /figure
 /wandb
 /surprisal_result
+requirements.txt
+
+# ont-time analysis code
+src/t_test.py
+src/train_native_lens_ddp.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

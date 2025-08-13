@@ -133,16 +133,16 @@ def save_checkpoint(model: torch.nn.Module, optimizer: torch.optim.AdamW, schedu
     }, checkpoint_path)
     print(f'Checkpoint saved to {checkpoint_path}')
     
-    try:
-        hf_api.upload_file(
-            path_or_fileobj=checkpoint_path,
-            path_in_repo=f'checkpoint_{epoch}_{global_step}.pt',
-            repo_id='Luoxiaoxi/GPT2-native-lens-CHILDS-seed42-bf16',
-            repo_type="model"
-        )
-        print(f'Successfully uploaded {checkpoint_path} to HF')
-    except Exception as e:
-        print(f"Failed to upload {checkpoint_path} to Hugging Face Hub: {e}")
+    # try:
+    #     hf_api.upload_file(
+    #         path_or_fileobj=checkpoint_path,
+    #         path_in_repo=f'checkpoint_{epoch}_{global_step}.pt',
+    #         repo_id='Luoxiaoxi/GPT2-native-lens-CHILDS-seed42-bf16',
+    #         repo_type="model"
+    #     )
+    #     print(f'Successfully uploaded {checkpoint_path} to HF')
+    # except Exception as e:
+    #     print(f"Failed to upload {checkpoint_path} to Hugging Face Hub: {e}")
 
 
 def init_training(probe_layers: List[int]):
@@ -156,7 +156,7 @@ def init_training(probe_layers: List[int]):
     return dataset, tokenizer, tokenized_dataset, probe_model, optimizer, scheduler, dataloader, start_epoch, global_step, epoch_step
 
 
-def main(probe_layer:list):
+def main(probe_layer:list, use_autocast=False):
     # initialize
     print('GPU number: ', torch.cuda.device_count())
     dataset, tokenizer, tokenized_dataset, probe_model, optimizer, scheduler, dataloader, start_epoch, global_step, epoch_step = init_training(probe_layer)
@@ -176,32 +176,46 @@ def main(probe_layer:list):
         for batch_no, batch in enumerate(progress_bar):
             batch = {k: v.to(device) for k, v in batch.items()}
             optimizer.zero_grad()
-            with autocast(dtype=torch.bfloat16): # Forward pass
+            if use_autocast: # use AMP
+                with autocast(dtype=torch.bfloat16): # Forward pass
+                    outputs = probe_model(input_ids=batch['input_ids'],
+                                    attention_mask=batch['attention_mask'],
+                                    labels=batch['input_ids'])
+                    loss = outputs['total_loss']
+                    loss = loss.mean() if torch.cuda.device_count() > 1 else loss
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                
+                total_norm = 0.0
+                for p in probe_model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm ** 0.5  # L2 norm of all gradients combined
+                
+                torch.nn.utils.clip_grad_norm_(probe_model.parameters(), max_norm=1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                scheduler.step()
+            else:  # do not use AMP
                 outputs = probe_model(input_ids=batch['input_ids'],
-                                attention_mask=batch['attention_mask'],
-                                labels=batch['input_ids'])
+                                    attention_mask=batch['attention_mask'],
+                                    labels=batch['input_ids'])
                 loss = outputs['total_loss']
                 loss = loss.mean() if torch.cuda.device_count() > 1 else loss
-            
-            # loss.backward()
-            scaler.scale(loss).backward()
-            
-            total_norm = 0.0
-            for p in probe_model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5  # L2 norm of all gradients combined
-            
-            # Gradient clipping: Unscales the gradients of optimizer's assigned params in-place
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(probe_model.parameters(), max_norm=1.0)
-            
-            scaler.step(optimizer)
-            scaler.update()
-            
+                loss.backward()
+                
+                total_norm = 0.0
+                for p in probe_model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm ** 0.5  # L2 norm of all gradients combined
+                
+                torch.nn.utils.clip_grad_norm_(probe_model.parameters(), max_norm=1.0)
+                optimizer.step()
+                
             scheduler.step()
-
             epoch_loss += loss.item()
             progress_bar.set_postfix({'loss': loss.item()})
 
@@ -245,6 +259,7 @@ def main(probe_layer:list):
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('device: ', device)
+    os.environ["WANDB_MODE"] = "offline" 
 
     yaml_path = 'src/template_CHILDS.yaml'
     with open(yaml_path, 'r') as file:
@@ -273,7 +288,7 @@ if __name__ == '__main__':
     TOKENIZER_TYPE = hyperparameters['model']['tokenizer']['tokenizer_type']
     VOCAB_FILE = hyperparameters['model']['tokenizer']['vocab_file']
     PROJ_NAME = hyperparameters['training']['wandb_project']
-
+    
     hf_api = HfApi()
     
     main(probe_layer = [i for i in range(11)])

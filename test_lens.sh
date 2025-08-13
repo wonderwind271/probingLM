@@ -3,7 +3,7 @@
 #SBATCH --job-name=test_native_len
 #SBATCH --time=12:00:00
 #SBATCH --mem=100GB
-#SBATCH --partition=COMPLING
+#SBATCH --partition=ALL
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
 
