@@ -66,6 +66,7 @@ warmup_ratio = 0.05               # easier than counting steps manually
 learning_rate = 5e-5              # adjust to your model/task
 weight_decay = 0.05
 max_grad_norm = 1.0
+seed = 42
 
 # Mixed precision—set bf16=True on newer GPUs (A100/H100), otherwise fp16=True
 use_bf16 = torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8  # Ampere+
@@ -99,6 +100,7 @@ args = TrainingArguments(
     dataloader_num_workers=4,
     report_to=["none"],                  # or "wandb", "tensorboard"
     ddp_find_unused_parameters=False,    # good default if you use DDP later
+    seed=seed
 )
 
 # -----------------------------
