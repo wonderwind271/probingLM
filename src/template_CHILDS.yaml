@@ -18,7 +18,7 @@ training:
   # general settings
   use_tf32: true
   use_amp: true
-  amp_dtype: 'bf16'
+  # amp_dtype: 'bf16'
   torch_compile: false
   grad_accum_steps: 1
   grad_clip_norm: 1.0
@@ -35,8 +35,8 @@ training:
   train_split: ['ACL', 'NAACL', 'EMNLP']  # merge all splits in train_split and train, if is_train_all == False
 
   training_cycle_unit: 'steps'  # 'epochs' | 'steps'
-  training_cycle_value: 30000  # original: 2w
-  seed: 142
+  training_cycle_value: 20000  # original: 2w
+  seed: 242
 
   lr: 0.00005
   # beta1: 0.9
@@ -48,10 +48,10 @@ training:
 
   # checkpoint
   checkpoint_every: 1000
-  checkpoint_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed142/'
+  checkpoint_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed242/'
 
   # output
-  output_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed142/'
+  output_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed242/'
 
   # wandb
   api_key_path: './wandb_api_keys.yaml'

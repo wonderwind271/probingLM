@@ -14,7 +14,7 @@ class VocabProbingGPT2(BaseProbingGPT2):
     def _create_probe(self, has_bias: bool):
         return nn.Linear(self.d_model, self.vocab_size, bias=has_bias)
     
-    def __init__(self, base_model, tokenizer, num_layers=12, probing_layers=[], has_bias=True, loss_type="ce", freeze_backbone=False, device=None, add_layernorm=False):
+    def __init__(self, base_model, tokenizer, num_layers=12, probing_layers=[], has_bias=True, loss_type="ce", freeze_backbone=False, device=None, add_layernorm=True):
         '''Freeze backbone: whether to train the backbone model and lens at the same time'''
         super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias, device=device)
         assert loss_type in ("ce", "kl")
@@ -59,7 +59,7 @@ class VocabProbingGPT2(BaseProbingGPT2):
             # logits of the original GPT2 should also be detached.  
             probe_logits = self.probes[idx](h)
             probe_logits_ls.append(probe_logits)
-
+            
             if labels is not None:
                 if self.loss_type == "ce":
                     # Cross-entropy with next token labels
