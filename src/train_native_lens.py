@@ -37,7 +37,8 @@ def load_checkpoint(checkpoint_path: int, dataset: Dataset, tokenizer):
     # Restore model and wrap in DataParallel if needed
     base_model = GPT2LMHeadModel(config=GPT2Config())
     base_model.resize_token_embeddings(len(tokenizer))
-    probe_model = VocabProbingGPT2(base_model, tokenizer, probing_layers=checkpoint['probing_layers'], loss_type="ce", device=device, add_layernorm=True)
+    probe_model = VocabProbingGPT2(base_model, tokenizer, probing_layers=checkpoint['probing_layers'], loss_type="ce", 
+                                   device=device, add_layernorm=True)
     probe_model.load_state_dict(checkpoint['model_state_dict'])
 
     # Wrap in DataParallel if multiple GPUs are available
@@ -73,43 +74,42 @@ def load_checkpoint(checkpoint_path: int, dataset: Dataset, tokenizer):
 
 def resume_or_initialize_backbone(tokenizer, tokenized_dataset, dataset, probing_layer:list):
     # resume from last checkpoint
-    # try: 
-    #     pt_files = [f for f in os.listdir(CHECKPOINT_DIR) if f.endswith('.pt')]
-    #     latest_checkpoint = sorted(pt_files, key=lambda x: int(x.split('_')[-1].replace('.pt', '')))[-1]
-    #     print(f'Resuming from checkpoint: {latest_checkpoint}')
-    #     checkpoint_path = os.path.join(CHECKPOINT_DIR, latest_checkpoint)
-    #     probe_model, optimizer, scheduler, dataloader, metadata = load_checkpoint(checkpoint_path, tokenized_dataset, tokenizer)
+    try: 
+        pt_files = [f for f in os.listdir(CHECKPOINT_DIR) if f.endswith('.pt')]
+        latest_checkpoint = sorted(pt_files, key=lambda x: int(x.split('_')[-1].replace('.pt', '')))[-1]
+        print(f'Resuming from checkpoint: {latest_checkpoint}')
+        checkpoint_path = os.path.join(CHECKPOINT_DIR, latest_checkpoint)
+        probe_model, optimizer, scheduler, dataloader, metadata = load_checkpoint(checkpoint_path, tokenized_dataset, tokenizer)
 
-    #     start_epoch = metadata['epoch']
-    #     global_block_no = metadata['global_step']
-    #     epoch_step = metadata['epoch_step']
-    #     torch.set_rng_state(metadata['rng_state'].cpu())
-    #     if torch.cuda.is_available():
-    #         torch.cuda.set_rng_state_all([it.cpu() for it in metadata['cuda_rng_state']])
+        start_epoch = metadata['epoch']
+        global_block_no = metadata['global_step']
+        epoch_step = metadata['epoch_step']
+        torch.set_rng_state(metadata['rng_state'].cpu())
+        if torch.cuda.is_available():
+            torch.cuda.set_rng_state_all([it.cpu() for it in metadata['cuda_rng_state']])
 
-    # except:
-        # load base model
-    print('starting training from scratch')
-    base_model = GPT2LMHeadModel(config=GPT2Config())
-    base_model.resize_token_embeddings(len(tokenizer))
+    except:
+        print('starting training from scratch')
+        base_model = GPT2LMHeadModel(config=GPT2Config())
+        base_model.resize_token_embeddings(len(tokenizer))
 
-    # wrap up `probe model`
-    probe_model = VocabProbingGPT2(base_model, tokenizer, probing_layers=probing_layer, loss_type="ce",device=device, add_layernorm=True)
-    
-    if torch.cuda.device_count() > 1 and torch.cuda.is_available():
-        print(f'Using {torch.cuda.device_count()} GPUs with DataParallel')
-        probe_model = torch.nn.DataParallel(probe_model)
-    probe_model.to(device)
+        # wrap up `probe model`
+        probe_model = VocabProbingGPT2(base_model, tokenizer, probing_layers=probing_layer, loss_type="ce",device=device, add_layernorm=True)
+        
+        if torch.cuda.device_count() > 1 and torch.cuda.is_available():
+            print(f'Using {torch.cuda.device_count()} GPUs with DataParallel')
+            probe_model = torch.nn.DataParallel(probe_model)
+        probe_model.to(device)
 
-    optimizer = torch.optim.AdamW(probe_model.parameters(), lr=LEARNING_RATE)
-    scheduler = get_scheduler(
-        'linear', optimizer=optimizer, num_warmup_steps=WARMUP_STEPS, num_training_steps=step_num(dataset)
-    )
-    dataloader = prepare_dataloader(tokenized_dataset, BATCH_SIZE, seed=SEED)
+        optimizer = torch.optim.AdamW(probe_model.parameters(), lr=LEARNING_RATE)
+        scheduler = get_scheduler(
+            'linear', optimizer=optimizer, num_warmup_steps=WARMUP_STEPS, num_training_steps=step_num(dataset)
+        )
+        dataloader = prepare_dataloader(tokenized_dataset, BATCH_SIZE, seed=SEED)
 
-    start_epoch = 0
-    global_block_no = 0
-    epoch_step = 0
+        start_epoch = 0
+        global_block_no = 0
+        epoch_step = 0
 
     return probe_model, optimizer, scheduler, dataloader, start_epoch, global_block_no, epoch_step
 
@@ -136,7 +136,7 @@ def save_checkpoint(model: torch.nn.Module, optimizer: torch.optim.AdamW, schedu
         hf_api.upload_file(
             path_or_fileobj=checkpoint_path,
             path_in_repo=f'checkpoint_{epoch}_{global_step}.pt',
-            repo_id='Luoxiaoxi/GPT2-native-lens-CHILDS-seed242',
+            repo_id='Luoxiaoxi/test-assumption',
             repo_type="model"
         )
         print(f'Successfully uploaded {checkpoint_path} to HF')
@@ -155,20 +155,29 @@ def init_training(probe_layers: List[int]):
     return dataset, tokenizer, tokenized_dataset, probe_model, optimizer, scheduler, dataloader, start_epoch, global_step, epoch_step
 
 
-def main(probe_layer:list):
-    # initialize
-    print('GPU number: ', torch.cuda.device_count())
-    dataset, tokenizer, tokenized_dataset, probe_model, optimizer, scheduler, dataloader, start_epoch, global_step, epoch_step = init_training(probe_layer)
+def calculate_norm(model):
+    probe_norm, backbone_norm = 0, 0
+    for name, p in model.module.named_parameters():
+        if p.grad is not None:
+            if 'base_model' in name:
+                backbone_norm += p.grad.data.norm(2).item() ** 2
+            else:
+                probe_norm += p.grad.data.norm(2).item() ** 2
+    backbone_norm = backbone_norm**0.5
+    probe_norm = probe_norm**0.5
+    return backbone_norm, probe_norm
     
-    wandb.init(project=PROJ_NAME, name=f'seed242-CHILDS-float32-training', resume='allow')
+
+def main(probe_layer:list):
+    dataset, tokenizer, tokenized_dataset, probe_model, optimizer, scheduler, dataloader, start_epoch, global_step, epoch_step = init_training(probe_layer)
+    wandb.init(project=PROJ_NAME, name=f'separate-grad-clip-{SEED}', resume='allow')
     effective_epochs = epoch_num(dataset)
 
     for epoch in range(start_epoch, effective_epochs):
         print(f'Current Epoch {epoch} ...', flush=True)
-        if global_step == 0:
-            save_checkpoint(probe_model, optimizer, scheduler, epoch, epoch_step, global_step, probe_layer)
+        # if global_step == 0:
+        #     save_checkpoint(probe_model, optimizer, scheduler, epoch, epoch_step, global_step, probe_layer)
         epoch_loss = 0
-        # progress_bar = dataloader
         progress_bar = tqdm(dataloader, desc=f'Epoch {epoch + 1}/{effective_epochs}')
 
         for batch_no, batch in enumerate(progress_bar):
@@ -177,20 +186,24 @@ def main(probe_layer:list):
             outputs = probe_model(input_ids=batch['input_ids'],
                                 attention_mask=batch['attention_mask'],
                                 labels=batch['input_ids'])
+            
             loss = outputs['total_loss']
             loss = loss.mean() if torch.cuda.device_count() > 1 else loss
             
             optimizer.zero_grad()
             loss.backward()
             
-            total_norm = 0.0
-            for p in probe_model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5  # L2 norm of all gradients combined
-            torch.nn.utils.clip_grad_norm_(probe_model.parameters(), max_norm=1.0)
+            backbone_norm, probe_norm = calculate_norm(probe_model)
             
+            # clip base_model
+            base_params = list(probe_model.module.base_model.parameters())
+            torch.nn.utils.clip_grad_norm_(base_params, 1.0)
+
+            # clip each probe & its layernorm
+            for i in range(len(probe_model.module.probes)):
+                probe_params = list(probe_model.module.probes[i].parameters()) + list(probe_model.module.layer_norms[i].parameters())
+                torch.nn.utils.clip_grad_norm_(probe_params, 1.0)
+        
             optimizer.step()    
             scheduler.step()
             
@@ -199,6 +212,7 @@ def main(probe_layer:list):
 
             global_step += 1
             epoch_step += 1
+            
             if global_step % WANDB_LOG_EVERY == 0:
                 wandb.log({'batch_total_loss': loss.item(), 
                             'batch_gpt2_loss': outputs['loss_main'].mean().item(),
@@ -206,14 +220,15 @@ def main(probe_layer:list):
                             'learning_rate': optimizer.param_groups[0]['lr'], 
                             'epoch': epoch + 1, 
                             'step_in_epoch': epoch_step, 
-                            'grad_norm': total_norm})
+                            'probe_norm': probe_norm, 'gpt2_norm': backbone_norm,
+                            'total_grad_norm': probe_norm + backbone_norm})
             
             # Save checkpoint
-            if global_step % CHECKPOINT_INTERVAL == 0 or global_step in [500, 1500, 2500]:
+            if global_step % CHECKPOINT_INTERVAL == 0:
                 save_checkpoint(probe_model, optimizer, scheduler, epoch, epoch_step, global_step, probe_layer)
             
             # stop if it's 'steps' mode, at last epoch, and enough steps are trained (no need to finish the epoch)
-            if CYCLE_MODE == 'steps' and epoch == effective_epochs - 1 and global_step == CYCLE_VALUE:
+            if CYCLE_MODE == 'steps' and epoch == effective_epochs - 1 and global_step >= CYCLE_VALUE:
                 print('Enough steps are trained.')
                 print(f'Epoch {epoch + 1} completed.')
                 break
@@ -233,26 +248,24 @@ def main(probe_layer:list):
     watch_memory()
 
 
-def set_seed(seed:int):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # if using multi-GPU
-
-
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('device: ', device)
-    # os.environ["WANDB_MODE"] = "offline" 
+    print('GPU number: ', torch.cuda.device_count())
+    
+    os.environ["WANDB_MODE"] = "offline" 
 
     yaml_path = 'src/template_CHILDS.yaml'
     with open(yaml_path, 'r') as file:
         hyperparameters = yaml.safe_load(file)
 
     SEED = hyperparameters['training']['seed']
-
-
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)  # if using multi-GPU
+    
     # pull all global VARs
     CHECKPOINT_DIR = hyperparameters['training']['checkpoint_dir']
     OUTPUT_DIR = hyperparameters['training']['output_dir']

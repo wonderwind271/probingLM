@@ -15,5 +15,5 @@
 echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 echo "training native lens with multiGPU"
 
-# /u501/x25luo/.conda/envs/grounding/bin/python -c "import time; time.sleep(3600*12)"
+/u501/x25luo/.conda/envs/grounding/bin/python -c "import time; time.sleep(3600*12)"
 /u501/x25luo/.conda/envs/grounding/bin/python src/train_native_lens.py

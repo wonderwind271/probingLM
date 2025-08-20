@@ -77,6 +77,7 @@ def probe_checkpoint_path_to_model(path):
     base_model = GPT2LMHeadModel(config=GPT2Config())
     base_model.resize_token_embeddings(len(tokenizer))
     probe_model = VocabProbingGPT2(base_model, tokenizer, probing_layers=checkpoint['probing_layers'], loss_type="ce",device=device, add_layernorm=True)
+    from IPython import embed;embed()
     probe_model.load_state_dict(checkpoint['model_state_dict'])
     probe_model.to(device)
     return probe_model
@@ -128,6 +129,7 @@ def cal_surprisal(tokenizer, ckpt_path, simple=True):
         updated_content = handle_template(filename, simple)
         
         for word, content in updated_content.items():
+            from IPython import embed;embed()
             context = '<CHI> '+add_tag(content['env'], ':<ENV>') + ' <CHI> ' + add_tag(content['lan'])
             target_token = add_tag(word)
             surprisals = get_probe_surprisals(probe_model, tokenizer, context, target_token)
@@ -155,7 +157,6 @@ def compare_native_tuned_lens(folder_pth = 'figure'):
         with open(f'/u501/x25luo/codebase/probingLM/surprisal_result/native_lens/seed{seed}/normal_context_step20000.json', 'r') as fp:
             surprisal_dict = json.load(fp)
         surprisal_ls = list(surprisal_dict.values())
-    from IPython import embed;embed()
             
     plot_ls= {}
     for idx, step in enumerate([1000, 5000, 10000, 15000, 20000]):
@@ -250,10 +251,11 @@ def plot_single_step2k(folder_pth = 'figure'):
 
 
 if __name__ == '__main__':
+    # ------ plottig ------
     compare_native_tuned_lens()
     plot_single_step2k(folder_pth = 'figure')
     
-    # ------
+    # ------ test surprisal ------
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('device:', device)
     
@@ -270,11 +272,11 @@ if __name__ == '__main__':
             
         step = int(pth.split('_')[-1].replace('.pt', ''))
         checkpoint_path = os.path.join(CHECKPOINT_DIR, pth)
-        try:
-            with open(f'/u501/x25luo/codebase/probingLM/surprisal_result/native_lens/seed242/normal_context_step{step}.json', 'r') as fp:
-                surprisal_dict = json.load(fp)
-        except:
-            surprisal_dict = cal_surprisal(tokenizer, checkpoint_path, simple=False)
+        # try:
+        #     with open(f'/u501/x25luo/codebase/probingLM/surprisal_result/native_lens/seed242/normal_context_step{step}.json', 'r') as fp:
+        #         surprisal_dict = json.load(fp)
+        # except:
+        surprisal_dict = cal_surprisal(tokenizer, checkpoint_path, simple=False)
         surprisal_ls = list(surprisal_dict.values())
         avg, stderr = surprisal_stat(surprisal_ls)
         plot(avg, stderr, step, 'figure/native_len_CHILDS_seed242/')

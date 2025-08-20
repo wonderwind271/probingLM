@@ -4,7 +4,6 @@ import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from transformers import GPT2LMHeadModel
-import copy
 
 
 class ProbingOutput():
@@ -27,7 +26,6 @@ class BaseProbingGPT2(nn.Module, ABC):
         self.vocab_size = len(tokenizer)
         self.d_model = base_model.config.hidden_size
         self.device = device if device is not None else torch.device("cpu")
-
         self.probes = nn.ModuleList([
             self._create_probe(has_bias)
             for _ in self.probing_layers

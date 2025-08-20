@@ -31,7 +31,6 @@ class VocabProbingGPT2(BaseProbingGPT2):
             for param in self.base_model.parameters():
                 param.requires_grad = False
             self.base_model.eval()
-
         print('loss type =', loss_type, ', probing layers =', probing_layers)
     
     def forward(self, input_ids, attention_mask=None, labels=None):

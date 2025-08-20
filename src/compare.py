@@ -1,3 +1,12 @@
+import torch
+from model.probe_vocab import VocabProbingGPT2
+from tokenizer.wordlevel_tokenizer import TrainableWordTokenizer
+from transformers import GPT2Config, GPT2LMHeadModel
+from inference_vocab_len import handle_template
+from inference import add_tag
+import torch.nn.functional as F
+
+
 all_probing_s42 = [
     [8.112201981782913, 8.025863249540329, 8.015213287115097, 8.000177773714066, 8.008595881700515, 8.008601942300796, 8.012272269248962, 8.013899818897247, 8.011901514053346, 8.013166554212571, 8.017060139179229, 8.007271910190582],
     [6.714963750362396, 6.272512902677059, 6.270557882681489, 6.218803114593029, 6.253398547202349, 6.221911007747054, 6.2110697328299285, 6.258677221894264, 6.282680158689618, 6.258028539709747, 6.242295966096222, 6.22252842964232],
@@ -33,3 +42,87 @@ all_probing_s442 = [
     [6.529305231153965, 5.621328039288521, 5.734271430701018, 5.5687640988081695, 5.476149488404393, 5.496917303629219, 5.3783200912028555, 5.045226633690298, 4.929677077438682, 4.91076524649933, 4.851004842760041, 4.773198538027704], 
     [6.641205356478691, 5.685290133059024, 5.740135266751051, 5.647273201137781, 5.550750795200467, 5.539565666709096, 5.426697910539806, 5.1318344020098445, 4.997246646236628, 4.96192807533592, 4.916648969797418, 4.835538632575423]
 ]
+
+
+def checkpoint_path_to_model(path, model_type='gpt2'):
+    """Load probe checkpoint or GPT2 to model. type can be 'gpt2' or 'probe'"""
+    checkpoint = torch.load(path, map_location=device)
+    base_model = GPT2LMHeadModel(config=GPT2Config())
+    base_model.resize_token_embeddings(len(tokenizer))
+    if model_type == 'gpt2':
+        base_model.load_state_dict(checkpoint['model_state_dict'])
+        base_model.to(device)
+        return base_model.eval()
+    elif model_type == 'probe':
+        probe_model = VocabProbingGPT2(base_model, tokenizer, probing_layers=checkpoint['probing_layers'], loss_type="ce",device=device, add_layernorm=True)
+        probe_model.load_state_dict(checkpoint['model_state_dict'])
+        probe_model.to(device)
+        return probe_model.eval()
+    
+    
+@torch.no_grad()
+def get_probe_surprisals(model, tokenizer, context: str, target_token: str, model_type='gpt2'):
+    context_ids = tokenizer.encode(context, return_tensors='pt').to(model.device)
+    target_ids = tokenizer.encode(target_token, add_special_tokens=False)
+    
+    assert len(target_ids) == 1
+    target_id = target_ids[0]
+    
+    if model_type == 'probe':
+        with torch.no_grad():
+            base_output = model.base_model(input_ids=context_ids, return_dict=True)
+            gpt2_log_prob = F.log_softmax(base_output.logits[0, -1], dim=-1)
+    elif model_type == 'gpt2':
+        with torch.no_grad():
+            output = model(input_ids=context_ids)
+            gpt2_log_prob = F.log_softmax(output.logits[0, -1, :], dim=-1)
+    gpt2_surprisal = -gpt2_log_prob[target_id].item()
+    return gpt2_surprisal
+            
+
+def cal_surprisal(tokenizer, ckpt_path, model_type = 'gpt2'):
+    context_file_template = '/u501/x25luo/codebase/trabank-dev/test/word_context_archive/word_context{}.json'
+    context_file_idxs = ['', '2']
+    # context_file_idxs = ['', '2', '5_0', '5_1', '5_2', '5_3', '5_4', '6_0', '6_1', '6_2']
+    total_surprisal = []
+
+    model = checkpoint_path_to_model(ckpt_path, model_type)
+
+    for file_idx in context_file_idxs:
+        filename = context_file_template.format(file_idx)
+        print('now process: '+filename)
+        updated_content = handle_template(filename, simple=False)
+        
+        for word, content in updated_content.items():
+            context = '<CHI> '+add_tag(content['env'], ':<ENV>') + ' <CHI> ' + add_tag(content['lan'])
+            target_token = add_tag(word)
+            surprisal = get_probe_surprisals(model, tokenizer, context, target_token, model_type=model_type)
+            total_surprisal.append(surprisal)
+    
+    print(f'surprisal for {model_type}:', sum(total_surprisal), len(total_surprisal))
+            
+
+def check_backbone_and_native_lens(path):
+    cal_surprisal(tokenizer, path+'/checkpoint_0_100.pt', model_type = 'probe')
+    cal_surprisal(tokenizer, path+'/checkpoint_0_1000.pt', model_type = 'probe')
+    
+    model1 = checkpoint_path_to_model(f'/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed42_test/checkpoint_0_20_no_len_loss_H200.pt', model_type='probe')
+    model2 = checkpoint_path_to_model(f'/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed42_test/checkpoint_0_20_with_len_loss_H200.pt', model_type='probe')
+    from IPython import embed;embed()
+    
+    for i in range(12):
+        ln_f1= model1.base_model.transformer.h[i].mlp.c_fc.weight
+        ln_f2= model2.base_model.transformer.h[i].mlp.c_fc.weight
+        print(torch.norm(ln_f1-ln_f2))
+    
+
+
+
+if __name__ == "__main__":
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('device:', device)
+    
+    tokenizer = TrainableWordTokenizer(vocab_file='/u501/x25luo/codebase/probingLM/src/tokenizer/vocab.json')
+    CHECKPOINT_DIR = '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed42_test'
+    
+    check_backbone_and_native_lens(CHECKPOINT_DIR)

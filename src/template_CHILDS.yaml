@@ -36,7 +36,7 @@ training:
 
   training_cycle_unit: 'steps'  # 'epochs' | 'steps'
   training_cycle_value: 20000  # original: 2w
-  seed: 242
+  seed: 42
 
   lr: 0.00005
   # beta1: 0.9
@@ -48,10 +48,10 @@ training:
 
   # checkpoint
   checkpoint_every: 1000
-  checkpoint_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed242/'
+  checkpoint_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed42/'
 
   # output
-  output_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed242/'
+  output_dir: '/u501/x25luo/codebase/probingLM/ckpt/native_lens/output/seed42_test/'
 
   # wandb
   api_key_path: './wandb_api_keys.yaml'
