@@ -55,6 +55,11 @@ class BaseProbingGPT2(nn.Module, ABC):
 
 class NaturalProbingGPT2(BaseProbingGPT2):
     """Main LLM + probing loss (natural probing, train both)"""
+    def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12, probing_layers=[], has_bias=True, device=None):
+        super().__init__()
+        self.layer_norms = nn.ModuleList([
+            nn.LayerNorm(self.d_model) for _ in probing_layers
+        ])
     
     def _create_probe(self, has_bias: bool):
         return nn.Linear(self.d_model, self.d_model, bias=has_bias)
@@ -76,11 +81,14 @@ class NaturalProbingGPT2(BaseProbingGPT2):
 
         total_probe_loss = 0.0
         all_probe_logits = []
+        # self.base_model.lm_head.detach()
         
         for idx, layer in enumerate(self.probing_layers):
             h = hidden_states[layer + 1].detach()
-            logits = self.base_model.lm_head(
-                self.base_model.transformer.ln_f(self.probes[idx](h)))  # TODO: checking
+            probe_projected = self.probes[idx](h)
+            probe_projected_normalized = self.layer_norms[idx](probe_projected)
+            logits = probe_projected_normalized @ self.base_model.lm_head.weight.detach().T
+            
             all_probe_logits.append(logits)
             if labels is not None:
                 loss_i = self.loss_fn(
