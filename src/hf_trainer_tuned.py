@@ -2,7 +2,7 @@
 # torchrun --standalone --nproc_per_node=4 train_hf_trainer.py
 
 
-from model.probe import ProbingOutput, NaturalProbingGPT2
+from model.probe import ProbingOutput, NaturalProbingGPT2, LensProbingGPT2
 
 import os
 import torch
@@ -18,19 +18,35 @@ from transformers import (
     GPT2Config
 )
 
+# torch.set_default_device('cuda')
+
+
+def checkpoint_path_to_model(path):
+    """Load checkpoint to model."""
+    checkpoint = torch.load(path)
+    model = GPT2LMHeadModel(config=GPT2Config(n_layer=12))
+    # model.resize_token_embeddings(len(tokenizer))
+    # model.to(device)
+    model.load_state_dict(checkpoint)
+    return model
+
 # -----------------------------
 # Model & Tokenizer
 # -----------------------------
 # If you already have `model` instantiated, comment out the next line and import/construct yours.
 model_name = "gpt2"
-base_model = GPT2LMHeadModel(config=GPT2Config())
+model_dir = f'/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/natural_wiki/base/checkpoint-100000.pt'
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+oid = 0
+
+base_model = checkpoint_path_to_model(model_dir).to(device)
 tokenizer = AutoModelForCausalLM.from_pretrained(model_name)
 # wrap up `probe model`
 probing_layer = [list(range(-1,2)), list(range(2,5)), list(range(5,8)), list(range(8,11))]
-probing_layer = probing_layer[0]
+probing_layer = probing_layer[oid]
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-probe_model = NaturalProbingGPT2(base_model, tokenizer, probing_layers=probing_layer, device=device)
+probe_model = LensProbingGPT2(base_model, tokenizer, probing_layers=probing_layer, device=device).to(device)
 
 # If you already have a tokenizer, comment this and use yours.
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -80,7 +96,7 @@ seed = 42
 # TrainingArguments
 # -----------------------------
 args = TrainingArguments(
-    output_dir="/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/natural_wiki",
+    output_dir=f"/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/natural_wiki_tunedlens_{oid}",
     overwrite_output_dir=True,
     per_device_train_batch_size=per_device_bs,
     # per_device_eval_batch_size=per_device_bs,
@@ -95,7 +111,7 @@ args = TrainingArguments(
     # evaluation_strategy="steps",
     # eval_steps=500,                      # in optimizer-step units
     save_strategy="steps",
-    save_steps=10000,                     # in optimizer-step units
+    save_steps=5000,                     # in optimizer-step units
     save_total_limit=500,
     # fp16=fp16,
     # bf16=bf16,
@@ -104,7 +120,7 @@ args = TrainingArguments(
     report_to=["wandb"],                  # or "wandb", "tensorboard"
     ddp_find_unused_parameters=False,    # good default if you use DDP later
     seed=seed,
-    run_name='natural-wiki-42-test-0',
+    run_name=f'natural-wiki-42-tunedlens-{oid}',
     evaluation_strategy="no",
     save_safetensors=False,
 )
@@ -177,7 +193,7 @@ if getattr(probe_model.base_model.config, "pad_token_id", None) is None:
 
 trainer.train()
 
-# (Optional) final save
+# # (Optional) final save
 # trainer.save_model("/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/natural_wiki/final")
 # tokenizer.save_pretrained("/scratch/chaijy_root/chaijy2/shuyuwu/experiments/checkpoints/natural_wiki/final")
 
