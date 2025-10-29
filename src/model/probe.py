@@ -9,13 +9,18 @@ import copy
 
 class ProbingOutput():
     def __init__(self, arg: dict):
-        self.total_loss = arg['total_loss']
+        self.loss = self.total_loss = arg['total_loss']
         self.total_probe_loss = arg['total_probe_loss']
         self.all_probe_logits = arg['all_probe_logits']
         if 'loss_main' in arg:
             self.loss_main = arg['loss_main']
         else:
             self.loss_main = None
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return getattr(self, key)
+        else:
+            return self.loss
 
 
 class BaseProbingGPT2(nn.Module, ABC):
@@ -24,7 +29,7 @@ class BaseProbingGPT2(nn.Module, ABC):
         self.base_model = base_model
         self.num_layers = num_layers
         self.probing_layers = probing_layers
-        self.vocab_size = len(tokenizer)
+        # self.vocab_size = len(tokenizer.get_vocab())
         self.d_model = base_model.config.hidden_size
         self.device = device if device is not None else torch.device("cpu")
 
@@ -56,7 +61,7 @@ class BaseProbingGPT2(nn.Module, ABC):
 class NaturalProbingGPT2(BaseProbingGPT2):
     """Main LLM + probing loss (natural probing, train both)"""
     def __init__(self, base_model: GPT2LMHeadModel, tokenizer, num_layers=12, probing_layers=[], has_bias=True, device=None):
-        super().__init__()
+        super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias, device)
         self.layer_norms = nn.ModuleList([
             nn.LayerNorm(self.d_model) for _ in probing_layers
         ])
@@ -91,11 +96,15 @@ class NaturalProbingGPT2(BaseProbingGPT2):
             
             all_probe_logits.append(logits)
             if labels is not None:
-                loss_i = self.loss_fn(
-                    logits.view(-1, logits.size(-1)), labels.view(-1))
+                shifted_probe_logits = logits[:, :-1, :]
+                shifted_labels = labels[:, 1:]
+                loss_i = self.loss_fn(shifted_probe_logits.reshape(-1, shifted_probe_logits.size(-1)), shifted_labels.reshape(-1))
                 total_probe_loss += loss_i
 
         total_loss = loss_main + total_probe_loss
+
+        # print('main loss:', loss_main)
+        # print('total_probe_loss:', total_probe_loss)
         # return total_loss, loss_main, total_probe_loss, all_probe_logits
         return ProbingOutput({'total_loss': total_loss, 'loss_main': loss_main, 'total_probe_loss': total_probe_loss, 'all_probe_logits': all_probe_logits})
 
@@ -104,8 +113,8 @@ class LensProbingGPT2(BaseProbingGPT2):
     def _create_probe(self, has_bias: bool):
         return nn.Linear(self.d_model, self.d_model, bias=has_bias)
     
-    def __init__(self, base_model, tokenizer, num_layers=12, probing_layers=[], has_bias=True, loss_type="kl"):
-        super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias)
+    def __init__(self, base_model, tokenizer, num_layers=12, probing_layers=[], has_bias=True, loss_type="kl", device=None):
+        super().__init__(base_model, tokenizer, num_layers, probing_layers, has_bias, device)
         assert loss_type in ("ce", "kl")
         self.loss_type = loss_type
         self.layer_norms = nn.ModuleList([
